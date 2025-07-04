@@ -1,0 +1,31 @@
+version: "3.7"
+networks:
+  springapimysql-net:
+    name: springapimysql-net
+services:
+  api_service:
+    container_name: localspringbootapp
+    image: "springbootapp"
+    build:
+     context: .
+     dockerfile: Dockerfile
+    restart: always
+    ports:
+      - 8087:8080
+    networks:
+      - springapimysql-net
+    depends_on:
+      - mysqldb
+  mysqldb:
+    image: "mysql:8.0"
+    container_name: localspringbootdb
+    restart: always
+    volumes:
+    - ../../DataBases/sistemadereservas:/var/lib/mysql
+    ports:
+      - 3307:3306
+    networks:
+      - springapimysql-net
+    environment:
+      - MYSQL_ROOT_PASSWORD: root
+      -MYSQL_DATABASE: local
