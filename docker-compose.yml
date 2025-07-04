@@ -2,6 +2,7 @@ version: "3.7"
 networks:
   springapimysql-net:
     name: springapimysql-net
+    external: true
 services:
   mysqldb:
     image: "mysql:8.0"
