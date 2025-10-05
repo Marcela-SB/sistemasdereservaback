@@ -87,7 +87,7 @@ public class ReservaService {
                                 }
                             }
                             for (var weekDay : weekDays) {
-                                var newReservationSchedule = reservaModel.getSchedule()[weekDay];
+                                Boolean[] newReservationSchedule = reservaModel.getSchedule()[weekDay];
 
                                 Boolean[] defaultSchedule = new Boolean[16];
 
@@ -99,11 +99,36 @@ public class ReservaService {
                                     testReservationSchedule = reservation.getSchedule()[weekDay + toChangeVector];
                                 }
 
+                                // Garante que o array default não tenha elementos null
+                                for (int i = 0; i < defaultSchedule.length; i++) {
+                                    if (defaultSchedule[i] == null) {
+                                        defaultSchedule[i] = false;
+                                    }
+                                }
+                                // Garante que testReservationSchedule não é null
+                                if (testReservationSchedule == null) {
+                                    testReservationSchedule = defaultSchedule;
+                                }
+
+                                // O Loop de Verificação Corrigido
                                 var hourly = List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
                                 for (var hour : hourly) {
-                                    if (newReservationSchedule[hour] && testReservationSchedule[hour]) {
+                                    // Apenas verifica o conflito se AMBOS os horários não forem nulos (e forem true).
+                                    // O operador && curto-circuita, impedindo o NPE.
+
+                                    Boolean novoHorario = newReservationSchedule[hour];
+                                    Boolean existenteHorario = testReservationSchedule[hour];
+
+                                    // Se ambos são TRUE, há conflito.
+                                    // Usamos '!= null' antes de usar 'booleanValue()' ou o autounboxing.
+                                    if (novoHorario != null && novoHorario.booleanValue() &&
+                                        existenteHorario != null && existenteHorario.booleanValue()) {
+                                        
+                                        // Em um caso mais simples, se você sabe que os arrays só têm TRUE/FALSE:
+                                        // if (Boolean.TRUE.equals(novoHorario) && Boolean.TRUE.equals(existenteHorario)) {
+                                        
                                         return ResponseEntity.status(400).body(
-                                                "Espaço esta reservado neste horario para a materia " + reservation.getName());
+                                            "Espaço esta reservado neste horario para a materia " + reservation.getName());
                                     }
                                 }
                             }
