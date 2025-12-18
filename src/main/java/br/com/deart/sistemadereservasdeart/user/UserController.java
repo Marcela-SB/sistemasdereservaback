@@ -45,17 +45,35 @@ public class UserController {
         var cryptPassword = BCrypt.withDefaults().hashToString(12, userModel.getPassword().toCharArray());
 
         userModel.setPassword(cryptPassword);
+        userModel.setActive(true);
 
         this.userRepository.save(userModel);
         return ResponseEntity.status(201).body(userModel);
 
     }
 
-    @GetMapping("/list")
-    public ResponseEntity listAllUsers(HttpServletRequest request){
+    @PostMapping("/activate/{userId}")
+    public ResponseEntity activateUser(@PathVariable UUID userId){
+        var user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            return ResponseEntity.status(404).body("Usuário não encontrado!");
+        }
 
+        user.setActive(true);
+        userRepository.save(user);
+        return ResponseEntity.status(202).body(user);
+    }
+
+    @GetMapping()
+    public ResponseEntity listAllUsers(HttpServletRequest request){
         var users = this.userRepository.findAll();
-        return ResponseEntity.status(201).body(users);
+        return ResponseEntity.status(200).body(users);
+    }
+
+    @GetMapping("/actives")
+    public ResponseEntity listAllActiveUsers(HttpServletRequest request){
+        var users = this.userRepository.findByActiveTrue();
+        return ResponseEntity.status(200).body(users);
     }
 
     @DeleteMapping("/delete/{userId}")
@@ -67,8 +85,9 @@ public class UserController {
             return ResponseEntity.status(404).body("Usuário não existe.");
         } 
 
-        this.userRepository.delete(toDeleteUser);
-        return ResponseEntity.status(202).body(toDeleteUser);
+        toDeleteUser.setActive(false);
+        this.userRepository.save(toDeleteUser);
+        return ResponseEntity.status(200).body(toDeleteUser);
 
     }
 

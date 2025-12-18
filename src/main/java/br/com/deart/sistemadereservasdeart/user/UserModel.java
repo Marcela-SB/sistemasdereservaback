@@ -39,6 +39,10 @@ public class UserModel implements UserDetails{
 
     @Enumerated(EnumType.STRING)
     private RoleModel role;
+    
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "boolean default true")
+    private boolean active = true;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -62,7 +66,7 @@ public class UserModel implements UserDetails{
 
     @Override
     public boolean isEnabled() {
-        return true;
+        return this.active;
     }
 
 }
