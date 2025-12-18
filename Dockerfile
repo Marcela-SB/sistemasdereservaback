@@ -3,11 +3,11 @@ COPY src /app/src
 COPY pom.xml /app
 
 RUN mvn -f /app/pom.xml clean package -DskipTests
-FROM openjdk:17-alpine
+FROM eclipse-temurin:17-jdk-alpine
 
-COPY --from=build /app/target/sistemadereservasdeart-1.0.0.jar /app-service/sistemadereservasdeart-1.0.0.jar
 WORKDIR /app-service
+COPY --from=build /app/target/sistemadereservasdeart-1.0.0.jar .
 
 EXPOSE 8080
-ENTRYPOINT ["java","-jar","sistemadereservasdeart-1.0.0.jar"]
 
+ENTRYPOINT ["java","-jar","sistemadereservasdeart-1.0.0.jar"]
