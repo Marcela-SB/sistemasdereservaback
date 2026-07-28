@@ -58,10 +58,9 @@ public class ReservaController {
 
     }
 
-    @PutMapping("/edit/{reservationId}")
+@PutMapping("/edit/{reservationId}")
     public ResponseEntity editRoom(HttpServletRequest request, @RequestBody ReservaModel reservaModel,
             @PathVariable UUID reservationId) {
-
 
         var reservationToBeChanged = this.reservaRepository.findById(reservationId).orElse(null);
 
@@ -69,10 +68,49 @@ public class ReservaController {
             return ResponseEntity.status(404).body("Reserva não existe.");
         }
 
+        // 1. Atualização explícita campo a campo (evita falhas do PutTools)
+        if (reservaModel.getName() != null) {
+            reservationToBeChanged.setName(reservaModel.getName());
+        }
+        if (reservaModel.getCourse() != null) {
+            reservationToBeChanged.setCourse(reservaModel.getCourse());
+        }
+        if (reservaModel.getReservationStart() != null) {
+            reservationToBeChanged.setReservationStart(reservaModel.getReservationStart());
+        }
+        if (reservaModel.getReservationEnd() != null) {
+            reservationToBeChanged.setReservationEnd(reservaModel.getReservationEnd());
+        }
+        if (reservaModel.getComment() != null) {
+            reservationToBeChanged.setComment(reservaModel.getComment());
+        }
+        if (reservaModel.getSlots() != null) {
+            reservationToBeChanged.setSlots(reservaModel.getSlots());
+        }
+        if (reservaModel.getReservatedToId() != null) {
+            reservationToBeChanged.setReservatedToId(reservaModel.getReservatedToId());
+        }
+        if (reservaModel.getReservationResponsibleId() != null) {
+            reservationToBeChanged.setReservationResponsibleId(reservaModel.getReservationResponsibleId());
+        }
 
+        // 2. Atualização segura e explícita da lista de schedules
+        if (reservaModel.getSchedules() != null && !reservaModel.getSchedules().isEmpty()) {
+            reservationToBeChanged.getSchedules().clear();
+            
+            for (RoomsSchedule novoSchedule : reservaModel.getSchedules()) {
+                RoomsSchedule scheduleToPersist = new RoomsSchedule();
+                scheduleToPersist.setRoomsId(novoSchedule.getRoomsId());
+                scheduleToPersist.setSchedule(novoSchedule.getSchedule());
 
-        PutTools.copyNonNullProperties(reservaModel, reservationToBeChanged);
+                // Usa o helper method para garantir o vínculo bidirecional correto
+                reservationToBeChanged.addRoomsSchedule(scheduleToPersist);
+            }
+        } else {
+            return ResponseEntity.status(400).body("A lista de salas e horários não pode estar vazia.");
+        }
 
+        // 3. Executa as validações e salva
         return service.reservationCheck(reservationToBeChanged);
     }
 }

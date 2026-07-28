@@ -2,10 +2,13 @@ package br.com.deart.sistemadereservasdeart.reserva;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Optional;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
+import br.com.deart.sistemadereservasdeart.enums.ClassTime;
+import br.com.deart.sistemadereservasdeart.enums.WeekDays;
 import br.com.deart.sistemadereservasdeart.sala.ISalaRepository;
 import br.com.deart.sistemadereservasdeart.user.IUserRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,10 +23,25 @@ public class ReservaService {
 
     public ResponseEntity reservationCheck(ReservaModel reservaModel) {
 
-        for( UUID reservationRoomId : reservaModel.getRoomsId() ) {
-            var roomId = this.salaRepository.findById(reservationRoomId).orElse(null);
-            if (roomId == null) {
-                return ResponseEntity.status(404).body("Sala não existe.");
+        // 1. Validações iniciais
+        if (reservaModel.getSchedules() == null || reservaModel.getSchedules().isEmpty()) {
+            return ResponseEntity.status(400).body("A lista de salas e horários não pode estar vazia.");
+        }
+
+        for (RoomsSchedule roomSchedule : reservaModel.getSchedules()) {
+            if (roomSchedule.getRoomsId() == null) {
+                return ResponseEntity.status(400).body("Lista de IDs de salas incorreta.");
+            }
+
+            for (UUID reservationRoomId : roomSchedule.getRoomsId()) {
+                var roomId = this.salaRepository.findById(reservationRoomId).orElse(null);
+                if (roomId == null) {
+                    return ResponseEntity.status(404).body("Sala não existe.");
+                }
+            }
+
+            if (roomSchedule.getSchedule() == null) {
+                return ResponseEntity.status(400).body("Formato de horários incorreto");
             }
         }
 
@@ -37,98 +55,121 @@ public class ReservaService {
             return ResponseEntity.status(404).body("Usuário para quem a sala esta sendo reservada não existe.");
         }
 
-        if (reservaModel.getSchedule() == null) {
-            return ResponseEntity.status(400).body("Formato de horarios incorreto");
-        }
-
         if (reservaModel.getReservationStart().isAfter(reservaModel.getReservationEnd())) {
             return ResponseEntity.status(400).body("Data de inicio deve vir antes da data de termino");
         }
 
-        // Aqui conferimos se a reserva entra em conflito de horario com alguma outra
-        var allReservations = reservaRepository.findAll();
-        for (var reservation : allReservations) {
-            for( UUID allReservationsRoomId : reservation.getRoomsId() ) {
-                for( UUID reservationRoomId : reservaModel.getRoomsId() ) {
-                    // Fazemos a checagem apenas nas reservas que utilizam de uma mesma sala
-                    if (allReservationsRoomId.equals(reservationRoomId)) {
-                        // Então verificamos se as reservas se sobrepoem em suas datas
-                        if (((reservation.getReservationStart().isBefore(reservaModel.getReservationEnd())
-                                && reservation.getReservationStart().isAfter(reservaModel.getReservationStart()))
-                                || (reservation.getReservationEnd().isBefore(reservaModel.getReservationEnd())
-                                && reservation.getReservationEnd().isAfter(reservaModel.getReservationStart())))
-                                || ((reservaModel.getReservationStart().isBefore(reservation.getReservationEnd())
-                                && reservaModel.getReservationStart().isAfter(reservation.getReservationStart()))
-                                || (reservaModel.getReservationEnd().isBefore(reservation.getReservationEnd())
-                                && reservaModel.getReservationEnd()
-                                .isAfter(reservation.getReservationStart())))) {
-                            // Por ultimo checamos se elas conflitam nos horarios especificos das datas em
-                            // que se conflitam
+        // 2. Busca otimizada: traz apenas reservas no mesmo intervalo de datas
+        var candidateReservations = reservaRepository.findConflictingDateRange(
+            reservaModel.getReservationStart(), 
+            reservaModel.getReservationEnd()
+        );
 
-                            var weekDays = List.of(0, 1, 2, 3, 4, 5, 6);
+        // 3. Verificação de conflito de forma sequencial (thread-safe para o Hibernate)
+        Optional<String> conflictMessage = candidateReservations.stream()
+            .map(existingReservation -> checkConflictWithReservation(existingReservation, reservaModel))
+            .filter(Optional::isPresent)
+            .map(Optional::get)
+            .findFirst();
+
+        if (conflictMessage.isPresent()) {
+            return ResponseEntity.status(400).body(conflictMessage.get());
+        }
+
+        // 4. Associa o relacionamento bidirecional e salva
+        if (reservaModel.getSchedules() != null) {
+            for (RoomsSchedule schedule : reservaModel.getSchedules()) {
+                schedule.setReservation(reservaModel);
+            }
+        }
+
+        this.reservaRepository.save(reservaModel);
+        return ResponseEntity.status(201).body(reservaModel);
+    }
+
+    /**
+     * Método auxiliar para validar conflitos de uma reserva existente de forma thread-safe.
+     */
+    private Optional<String> checkConflictWithReservation(ReservaModel existingReservation, ReservaModel newReservation) {
+        for (var baseRoomSchedule : existingReservation.getSchedules()) {
+            for (var reqRoomSchedule : newReservation.getSchedules()) {
+                for (UUID baseRoomsId : baseRoomSchedule.getRoomsId()) {
+                    for (UUID reqRoomsId : reqRoomSchedule.getRoomsId()) {
+                        
+                        if (baseRoomsId.equals(reqRoomsId)) {
                             
-                            var reqHasSunday = reservaModel.getSchedule().length > 6;
-                            var baseHasSunday =  reservation.getSchedule().length > 6;
+                            // Sobreposição de datas
+                            if (((existingReservation.getReservationStart().isBefore(newReservation.getReservationEnd())
+                                    && existingReservation.getReservationStart().isAfter(newReservation.getReservationStart()))
+                                    || (existingReservation.getReservationEnd().isBefore(newReservation.getReservationEnd())
+                                    && existingReservation.getReservationEnd().isAfter(newReservation.getReservationStart())))
+                                    || ((newReservation.getReservationStart().isBefore(existingReservation.getReservationEnd())
+                                    && newReservation.getReservationStart().isAfter(existingReservation.getReservationStart()))
+                                    || (newReservation.getReservationEnd().isBefore(existingReservation.getReservationEnd())
+                                    && newReservation.getReservationEnd().isAfter(existingReservation.getReservationStart())))) {
+                                
+                                var weekDays = List.of(0, 1, 2, 3, 4, 5, 6);
+                                var reqHasSunday = reqRoomSchedule.getSchedule().length > 6;
+                                var baseHasSunday = baseRoomSchedule.getSchedule().length > 6;
 
-                            // Nem req nem base tem domingo
-                            if(!reqHasSunday && !baseHasSunday){
-                                weekDays = List.of(0, 1, 2, 3, 4, 5);
-                            }
-
-                            var toChangeVector = 0;
-
-                            // Apenas 1 dos 2 tem domingo
-                            if(reservaModel.getSchedule().length != reservation.getSchedule().length){
-                                // Req tem domingo e base não
-                                if(reservaModel.getSchedule().length > reservation.getSchedule().length){
-                                    toChangeVector = -1;
-                                } else {
-                                    toChangeVector = 1;
-                                }
-                            }
-                            for (var weekDay : weekDays) {
-                                Boolean[] newReservationSchedule = reservaModel.getSchedule()[weekDay];
-
-                                Boolean[] defaultSchedule = new Boolean[16];
-
-                                Boolean[] testReservationSchedule;
-                                var trueBaseWeekDay = weekDay + toChangeVector;
-                                if(trueBaseWeekDay < 0) {
-                                    testReservationSchedule = defaultSchedule;
-                                } else {
-                                    testReservationSchedule = reservation.getSchedule()[weekDay + toChangeVector];
+                                if (!reqHasSunday && !baseHasSunday) {
+                                    weekDays = List.of(0, 1, 2, 3, 4, 5);
                                 }
 
-                                // Garante que o array default não tenha elementos null
-                                for (int i = 0; i < defaultSchedule.length; i++) {
-                                    if (defaultSchedule[i] == null) {
-                                        defaultSchedule[i] = false;
+                                var toChangeVector = 0;
+                                if (reqRoomSchedule.getSchedule().length != baseRoomSchedule.getSchedule().length) {
+                                    if (reqRoomSchedule.getSchedule().length > baseRoomSchedule.getSchedule().length) {
+                                        toChangeVector = -1;
+                                    } else {
+                                        toChangeVector = 1;
                                     }
                                 }
-                                // Garante que testReservationSchedule não é null
-                                if (testReservationSchedule == null) {
-                                    testReservationSchedule = defaultSchedule;
-                                }
 
-                                // O Loop de Verificação Corrigido
-                                var hourly = List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
-                                for (var hour : hourly) {
-                                    // Apenas verifica o conflito se AMBOS os horários não forem nulos (e forem true).
-                                    // O operador && curto-circuita, impedindo o NPE.
+                                for (var weekDay : weekDays) {
+                                    Boolean[] newReservationSchedule = reqRoomSchedule.getSchedule()[weekDay];
+                                    Boolean[] defaultSchedule = new Boolean[16];
+                                    Boolean[] testReservationSchedule;
+                                    
+                                    var trueBaseWeekDay = weekDay + toChangeVector;
+                                    if (trueBaseWeekDay < 0 || trueBaseWeekDay >= baseRoomSchedule.getSchedule().length) {
+                                        testReservationSchedule = defaultSchedule;
+                                    } else {
+                                        testReservationSchedule = baseRoomSchedule.getSchedule()[trueBaseWeekDay];
+                                    }
 
-                                    Boolean novoHorario = newReservationSchedule[hour];
-                                    Boolean existenteHorario = testReservationSchedule[hour];
+                                    for (int i = 0; i < defaultSchedule.length; i++) {
+                                        if (defaultSchedule[i] == null) {
+                                            defaultSchedule[i] = false;
+                                        }
+                                    }
+                                    if (testReservationSchedule == null) {
+                                        testReservationSchedule = defaultSchedule;
+                                    }
 
-                                    // Se ambos são TRUE, há conflito.
-                                    // Usamos '!= null' antes de usar 'booleanValue()' ou o autounboxing.
-                                    if (novoHorario != null && novoHorario.booleanValue() &&
-                                        existenteHorario != null && existenteHorario.booleanValue()) {
-                                        
-                                        // Em um caso mais simples, se você sabe que os arrays só têm TRUE/FALSE:
-                                        // if (Boolean.TRUE.equals(novoHorario) && Boolean.TRUE.equals(existenteHorario)) {
-                                        
-                                        return ResponseEntity.status(400).body(
-                                            "Espaço esta reservado neste horario para a materia " + reservation.getName());
+                                    var hourly = List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+                                    for (var hour : hourly) {
+                                        Boolean novoHorario = (weekDay < reqRoomSchedule.getSchedule().length && hour < reqRoomSchedule.getSchedule()[weekDay].length) 
+                                            ? reqRoomSchedule.getSchedule()[weekDay][hour] : false;
+                                            
+                                        Boolean existenteHorario = (trueBaseWeekDay >= 0 && trueBaseWeekDay < baseRoomSchedule.getSchedule().length && hour < testReservationSchedule.length) 
+                                            ? testReservationSchedule[hour] : false;
+
+                                        if (Boolean.TRUE.equals(novoHorario) && Boolean.TRUE.equals(existenteHorario)) {
+                                            ClassTime horarioConflito = ClassTime.fromIndex(hour);
+                                            WeekDays diaConflito = WeekDays.fromIndex(weekDay);
+
+                                            String nomeDia = (diaConflito != null) ? diaConflito.getName() : "Desconhecido";
+                                            String horarioFormatado = (horarioConflito != null) ? horarioConflito.getDescription() : "Desconhecido";
+
+                                            String mensagem = String.format(
+                                                "Espaço já reservado para '%s' no dia %s, horário %s.",
+                                                existingReservation.getName(), 
+                                                nomeDia, 
+                                                horarioFormatado
+                                            );
+                                            
+                                            return Optional.of(mensagem);
+                                        }
                                     }
                                 }
                             }
@@ -137,8 +178,6 @@ public class ReservaService {
                 }
             }
         }
-        this.reservaRepository.save(reservaModel);
-        return ResponseEntity.status(201).body(reservaModel);
+        return Optional.empty();
     }
-
 }

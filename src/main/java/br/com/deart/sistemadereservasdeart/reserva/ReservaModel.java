@@ -4,16 +4,16 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.EnumType;
-
 import br.com.deart.sistemadereservasdeart.enums.Courses;
 import br.com.deart.sistemadereservasdeart.excecao.ExcecaoModel;
 import jakarta.annotation.Nullable;
 import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
 import lombok.Data;
+import lombok.ToString;
 
 @Data
 @Entity(name ="tb_reserva")
@@ -23,8 +23,6 @@ public class ReservaModel {
     @GeneratedValue(generator="UUID")
     private UUID id;
 
-    @Column(length = 300000)
-    private UUID[] roomsId;
 
     private UUID reservationResponsibleId;
     private UUID reservatedToId;
@@ -35,8 +33,10 @@ public class ReservaModel {
     @CreationTimestamp
     private LocalDateTime creationDate;
     
-    @Column(length = 65555)
-    private Boolean[][] schedule;
+    // @Column(length = 300000)
+    // private UUID[] roomsId;
+    // @Column(length = 65555)
+    // private Boolean[][] schedule;
     
     private LocalDateTime reservationStart;
     private LocalDateTime reservationEnd;
@@ -47,7 +47,23 @@ public class ReservaModel {
     @Enumerated(EnumType.STRING)
     private Courses course;
 
+    @ToString.Exclude
+    @JsonManagedReference
+    @OneToMany(mappedBy = "reservation", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<RoomsSchedule> schedules;
+
     @Nullable
     @OneToMany(mappedBy = "reserva", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ExcecaoModel> excecoes;
+
+
+
+    public void addRoomsSchedule(RoomsSchedule rs) {
+        if (!this.schedules.contains(rs)) {
+            this.schedules.add(rs);
+            rs.setReservation(this);
+        }
+    } 
+
+
 }
