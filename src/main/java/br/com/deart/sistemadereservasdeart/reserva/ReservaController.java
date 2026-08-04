@@ -102,6 +102,9 @@ public class ReservaController {
                 RoomsSchedule scheduleToPersist = new RoomsSchedule();
                 scheduleToPersist.setRoomsId(novoSchedule.getRoomsId());
                 scheduleToPersist.setSchedule(novoSchedule.getSchedule());
+                
+                scheduleToPersist.setStartDate(novoSchedule.getStartDate());
+                scheduleToPersist.setEndDate(novoSchedule.getEndDate());
 
                 // Usa o helper method para garantir o vínculo bidirecional correto
                 reservationToBeChanged.addRoomsSchedule(scheduleToPersist);

@@ -1,5 +1,6 @@
 package br.com.deart.sistemadereservasdeart.reserva;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
@@ -25,6 +26,9 @@ public class RoomsSchedule {
     @ManyToOne
     @JoinColumn(name = "reservation_id")
     private ReservaModel reservation;
+
+    private LocalDate startDate;
+    private LocalDate endDate;
 
     @Column(length = 300000)
     private UUID[] roomsId;

@@ -91,34 +91,33 @@ public class ReservaService {
      * Método auxiliar para validar conflitos de uma reserva existente de forma thread-safe.
      */
     private Optional<String> checkConflictWithReservation(ReservaModel existingReservation, ReservaModel newReservation) {
-        for (var baseRoomSchedule : existingReservation.getSchedules()) {
-            for (var reqRoomSchedule : newReservation.getSchedules()) {
-                for (UUID baseRoomsId : baseRoomSchedule.getRoomsId()) {
-                    for (UUID reqRoomsId : reqRoomSchedule.getRoomsId()) {
+        for (var existingRoomSchedule : existingReservation.getSchedules()) {
+            for (var newRoomSchedule : newReservation.getSchedules()) {
+                for (UUID baseRoomsId : existingRoomSchedule.getRoomsId()) {
+                    for (UUID reqRoomsId : newRoomSchedule.getRoomsId()) {
                         
                         if (baseRoomsId.equals(reqRoomsId)) {
-                            
-                            // Sobreposição de datas
-                            if (((existingReservation.getReservationStart().isBefore(newReservation.getReservationEnd())
-                                    && existingReservation.getReservationStart().isAfter(newReservation.getReservationStart()))
-                                    || (existingReservation.getReservationEnd().isBefore(newReservation.getReservationEnd())
-                                    && existingReservation.getReservationEnd().isAfter(newReservation.getReservationStart())))
-                                    || ((newReservation.getReservationStart().isBefore(existingReservation.getReservationEnd())
-                                    && newReservation.getReservationStart().isAfter(existingReservation.getReservationStart()))
-                                    || (newReservation.getReservationEnd().isBefore(existingReservation.getReservationEnd())
-                                    && newReservation.getReservationEnd().isAfter(existingReservation.getReservationStart())))) {
-                                
+                            if (existingRoomSchedule.getStartDate() == null || existingRoomSchedule.getEndDate() == null ||
+                                newRoomSchedule.getStartDate() == null || newRoomSchedule.getEndDate() == null) {
+                                return Optional.of("Ocorreu um erro inesperado!");
+                            }
+
+                            // Sobreposição de datas de cada Schedule sala-horário
+                            // "O intervalo 'A' termina depois que o 'B' começa E o intervalo 'A' começa antes que o 'B' termine."
+                            boolean datesOverlap = !(existingRoomSchedule.getEndDate().isBefore(newRoomSchedule.getStartDate()) || existingRoomSchedule.getStartDate().isAfter(newRoomSchedule.getEndDate()));
+
+                            if (datesOverlap) {    
                                 var weekDays = List.of(0, 1, 2, 3, 4, 5, 6);
-                                var reqHasSunday = reqRoomSchedule.getSchedule().length > 6;
-                                var baseHasSunday = baseRoomSchedule.getSchedule().length > 6;
+                                var reqHasSunday = newRoomSchedule.getSchedule().length > 6;
+                                var baseHasSunday = existingRoomSchedule.getSchedule().length > 6;
 
                                 if (!reqHasSunday && !baseHasSunday) {
                                     weekDays = List.of(0, 1, 2, 3, 4, 5);
                                 }
 
                                 var toChangeVector = 0;
-                                if (reqRoomSchedule.getSchedule().length != baseRoomSchedule.getSchedule().length) {
-                                    if (reqRoomSchedule.getSchedule().length > baseRoomSchedule.getSchedule().length) {
+                                if (newRoomSchedule.getSchedule().length != existingRoomSchedule.getSchedule().length) {
+                                    if (newRoomSchedule.getSchedule().length > existingRoomSchedule.getSchedule().length) {
                                         toChangeVector = -1;
                                     } else {
                                         toChangeVector = 1;
@@ -126,15 +125,15 @@ public class ReservaService {
                                 }
 
                                 for (var weekDay : weekDays) {
-                                    Boolean[] newReservationSchedule = reqRoomSchedule.getSchedule()[weekDay];
+                                    Boolean[] newReservationSchedule = newRoomSchedule.getSchedule()[weekDay];
                                     Boolean[] defaultSchedule = new Boolean[16];
                                     Boolean[] testReservationSchedule;
                                     
                                     var trueBaseWeekDay = weekDay + toChangeVector;
-                                    if (trueBaseWeekDay < 0 || trueBaseWeekDay >= baseRoomSchedule.getSchedule().length) {
+                                    if (trueBaseWeekDay < 0 || trueBaseWeekDay >= existingRoomSchedule.getSchedule().length) {
                                         testReservationSchedule = defaultSchedule;
                                     } else {
-                                        testReservationSchedule = baseRoomSchedule.getSchedule()[trueBaseWeekDay];
+                                        testReservationSchedule = existingRoomSchedule.getSchedule()[trueBaseWeekDay];
                                     }
 
                                     for (int i = 0; i < defaultSchedule.length; i++) {
@@ -148,10 +147,10 @@ public class ReservaService {
 
                                     var hourly = List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
                                     for (var hour : hourly) {
-                                        Boolean novoHorario = (weekDay < reqRoomSchedule.getSchedule().length && hour < reqRoomSchedule.getSchedule()[weekDay].length) 
-                                            ? reqRoomSchedule.getSchedule()[weekDay][hour] : false;
+                                        Boolean novoHorario = (weekDay < newRoomSchedule.getSchedule().length && hour < newRoomSchedule.getSchedule()[weekDay].length) 
+                                            ? newRoomSchedule.getSchedule()[weekDay][hour] : false;
                                             
-                                        Boolean existenteHorario = (trueBaseWeekDay >= 0 && trueBaseWeekDay < baseRoomSchedule.getSchedule().length && hour < testReservationSchedule.length) 
+                                        Boolean existenteHorario = (trueBaseWeekDay >= 0 && trueBaseWeekDay < existingRoomSchedule.getSchedule().length && hour < testReservationSchedule.length) 
                                             ? testReservationSchedule[hour] : false;
 
                                         if (Boolean.TRUE.equals(novoHorario) && Boolean.TRUE.equals(existenteHorario)) {

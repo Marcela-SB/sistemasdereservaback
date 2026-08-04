@@ -37,6 +37,9 @@ public class ReservaModel {
     // private UUID[] roomsId;
     // @Column(length = 65555)
     // private Boolean[][] schedule;
+
+    @Column(nullable = false)
+    private boolean hasMultipleDates = false;
     
     private LocalDateTime reservationStart;
     private LocalDateTime reservationEnd;
