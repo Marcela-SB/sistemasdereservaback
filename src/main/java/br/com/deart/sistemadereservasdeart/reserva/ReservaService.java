@@ -21,14 +21,13 @@ public class ReservaService {
     private final IReservaRepository reservaRepository;
     private final IUserRepository userRepository;
 
-    public ResponseEntity reservationCheck(ReservaModel reservaModel) {
+    public ResponseEntity reservationCheck(ReservaModel reservationToSave) {
 
         // 1. Validações iniciais
-        if (reservaModel.getSchedules() == null || reservaModel.getSchedules().isEmpty()) {
+        if (reservationToSave.getSchedules() == null || reservationToSave.getSchedules().isEmpty()) {
             return ResponseEntity.status(400).body("A lista de salas e horários não pode estar vazia.");
         }
-
-        for (RoomsSchedule roomSchedule : reservaModel.getSchedules()) {
+        for (RoomsSchedule roomSchedule : reservationToSave.getSchedules()) {
             if (roomSchedule.getRoomsId() == null) {
                 return ResponseEntity.status(400).body("Lista de IDs de salas incorreta.");
             }
@@ -45,29 +44,30 @@ public class ReservaService {
             }
         }
 
-        var responsibleUserId = this.userRepository.findById(reservaModel.getReservationResponsibleId()).orElse(null);
+        var responsibleUserId = this.userRepository.findById(reservationToSave.getReservationResponsibleId()).orElse(null);
         if (responsibleUserId == null) {
             return ResponseEntity.status(404).body("Usuário responsavel pela sala não existe.");
         }
 
-        var reservationToId = this.userRepository.findById(reservaModel.getReservatedToId()).orElse(null);
+        var reservationToId = this.userRepository.findById(reservationToSave.getReservatedToId()).orElse(null);
         if (reservationToId == null) {
             return ResponseEntity.status(404).body("Usuário para quem a sala esta sendo reservada não existe.");
         }
 
-        if (reservaModel.getReservationStart().isAfter(reservaModel.getReservationEnd())) {
+        if (reservationToSave.getReservationStart().isAfter(reservationToSave.getReservationEnd())) {
             return ResponseEntity.status(400).body("Data de inicio deve vir antes da data de termino");
         }
 
         // 2. Busca otimizada: traz apenas reservas no mesmo intervalo de datas
-        var candidateReservations = reservaRepository.findConflictingDateRange(
-            reservaModel.getReservationStart(), 
-            reservaModel.getReservationEnd()
+        var oldReservations = reservaRepository.findConflictingDateRangeExcludingCurrent(
+            reservationToSave.getReservationStart(), 
+            reservationToSave.getReservationEnd(), 
+            reservationToSave.getId()
         );
 
         // 3. Verificação de conflito de forma sequencial (thread-safe para o Hibernate)
-        Optional<String> conflictMessage = candidateReservations.stream()
-            .map(existingReservation -> checkConflictWithReservation(existingReservation, reservaModel))
+        Optional<String> conflictMessage = oldReservations.stream()
+            .map(existingReservation -> checkConflictWithReservation(existingReservation, reservationToSave))
             .filter(Optional::isPresent)
             .map(Optional::get)
             .findFirst();
@@ -77,14 +77,14 @@ public class ReservaService {
         }
 
         // 4. Associa o relacionamento bidirecional e salva
-        if (reservaModel.getSchedules() != null) {
-            for (RoomsSchedule schedule : reservaModel.getSchedules()) {
-                schedule.setReservation(reservaModel);
+        if (reservationToSave.getSchedules() != null) {
+            for (RoomsSchedule schedule : reservationToSave.getSchedules()) {
+                schedule.setReservation(reservationToSave);
             }
         }
 
-        this.reservaRepository.save(reservaModel);
-        return ResponseEntity.status(201).body(reservaModel);
+        this.reservaRepository.save(reservationToSave);
+        return ResponseEntity.status(201).body(reservationToSave);
     }
 
     /**
