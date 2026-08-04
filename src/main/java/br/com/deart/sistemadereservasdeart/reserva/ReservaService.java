@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import br.com.deart.sistemadereservasdeart.enums.ClassTime;
 import br.com.deart.sistemadereservasdeart.enums.WeekDays;
 import br.com.deart.sistemadereservasdeart.sala.ISalaRepository;
+import br.com.deart.sistemadereservasdeart.sala.SalaModel;
 import br.com.deart.sistemadereservasdeart.user.IUserRepository;
 import lombok.RequiredArgsConstructor;
 
@@ -102,7 +103,7 @@ public class ReservaService {
                                 return Optional.of("Ocorreu um erro inesperado!");
                             }
 
-                            // Sobreposição de datas de cada Schedule sala-horário
+                            // Sobreposição de datas
                             // "O intervalo 'A' termina depois que o 'B' começa E o intervalo 'A' começa antes que o 'B' termine."
                             boolean datesOverlap = !(existingRoomSchedule.getEndDate().isBefore(newRoomSchedule.getStartDate()) || existingRoomSchedule.getStartDate().isAfter(newRoomSchedule.getEndDate()));
 
@@ -160,8 +161,12 @@ public class ReservaService {
                                             String nomeDia = (diaConflito != null) ? diaConflito.getName() : "Desconhecido";
                                             String horarioFormatado = (horarioConflito != null) ? horarioConflito.getDescription() : "Desconhecido";
 
+                                            SalaModel conflictedRoom = salaRepository.findById(reqRoomsId).orElseThrow();
+
                                             String mensagem = String.format(
-                                                "Espaço já reservado para '%s' no dia %s, horário %s.",
+                                                "Espaço '%s - %s' já reservado para '%s' no dia %s, horário %s.",
+                                                conflictedRoom.getName(),
+                                                conflictedRoom.getRoomNumber(),
                                                 existingReservation.getName(), 
                                                 nomeDia, 
                                                 horarioFormatado
