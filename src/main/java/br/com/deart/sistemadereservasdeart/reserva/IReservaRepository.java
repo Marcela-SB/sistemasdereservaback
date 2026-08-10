@@ -17,7 +17,7 @@ public interface IReservaRepository extends JpaRepository<ReservaModel,UUID>{
         @Param("endDate") LocalDateTime endDate
     );
 
-    @Query("SELECT r FROM tb_reserva r WHERE r.reservationStart <= :endDate AND r.reservationEnd >= :startDate AND r.id <> :reservationId")
+    @Query("SELECT r FROM tb_reserva r WHERE r.reservationStart <= :endDate AND r.reservationEnd >= :startDate AND (:reservationId IS NULL OR r.id <> :reservationId)")
     List<ReservaModel> findConflictingDateRangeExcludingCurrent(
         @Param("startDate") LocalDateTime startDate, 
         @Param("endDate") LocalDateTime endDate, 
