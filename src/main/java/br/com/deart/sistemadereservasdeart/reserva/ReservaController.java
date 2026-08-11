@@ -93,6 +93,8 @@ public class ReservaController {
         if (reservaModel.getReservationResponsibleId() != null) {
             reservationToBeChanged.setReservationResponsibleId(reservaModel.getReservationResponsibleId());
         }
+        
+        reservationToBeChanged.setHasMultipleDates(reservaModel.isHasMultipleDates());
 
         // 2. Atualização segura e explícita da lista de schedules
         if (reservaModel.getSchedules() != null && !reservaModel.getSchedules().isEmpty()) {
